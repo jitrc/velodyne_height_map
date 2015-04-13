@@ -44,11 +44,13 @@ HeightMap::HeightMap(ros::NodeHandle node, ros::NodeHandle priv_nh)
   priv_nh.param("full_clouds", full_clouds_, false);
   priv_nh.param("grid_dimensions", grid_dim_, 320);
   priv_nh.param("height_threshold", height_diff_threshold_, 0.25);
-  
+  priv_nh.param("clearance_height", clearance_height, 0.0); // so that it does not consider overhead bridge as obstacle ( only if value > 0.0)
+
   ROS_INFO_STREAM("height map parameters: "
                   << grid_dim_ << "x" << grid_dim_ << ", "
                   << m_per_cell_ << "m cells, "
                   << height_diff_threshold_ << "m threshold, "
+                  << clearance_height << "m clearance_height, "
                   << (full_clouds_? "": "not ") << "publishing full clouds");
 
   // Set up publishers  
@@ -70,6 +72,7 @@ void HeightMap::constructFullClouds(const VPointCloud::ConstPtr &scan,
   float min[grid_dim_][grid_dim_];
   float max[grid_dim_][grid_dim_];
   bool init[grid_dim_][grid_dim_];
+  float height_temp;
   memset(&init, 0, grid_dim_*grid_dim_);
   
   // build height map
@@ -77,26 +80,31 @@ void HeightMap::constructFullClouds(const VPointCloud::ConstPtr &scan,
     int x = ((grid_dim_/2)+scan->points[i].x/m_per_cell_);
     int y = ((grid_dim_/2)+scan->points[i].y/m_per_cell_);
     if (x >= 0 && x < grid_dim_ && y >= 0 && y < grid_dim_) {
+	if(clearance_height > 0.0)
+		height_temp=MIN(clearance_height, scan->points[i].z);
       if (!init[x][y]) {
-        min[x][y] = scan->points[i].z;
-        max[x][y] = scan->points[i].z;
+        min[x][y] = height_temp;
+        max[x][y] = height_temp;
         init[x][y] = true;
       } else {
-        min[x][y] = MIN(min[x][y], scan->points[i].z);
-        max[x][y] = MAX(max[x][y], scan->points[i].z);
+        min[x][y] = MIN(min[x][y], height_temp);
+        max[x][y] = MAX(max[x][y], height_temp);
       }
     }
   }
 
+		
   // display points where map has height-difference > threshold
   for (unsigned i = 0; i < npoints; ++i) {
     int x = ((grid_dim_/2)+scan->points[i].x/m_per_cell_);
     int y = ((grid_dim_/2)+scan->points[i].y/m_per_cell_);
     if (x >= 0 && x < grid_dim_ && y >= 0 && y < grid_dim_ && init[x][y]) {
-      if ((max[x][y] - min[x][y] > height_diff_threshold_) ) {   
+      if ((max[x][y] - min[x][y] > height_diff_threshold_) && (clearance_height <= 0.0 || (clearance_height > 0.0 && min[x][y] < clearance_height) ) ) {  
+		if(clearance_height > 0.0)
+		  height_temp=MIN(clearance_height, scan->points[i].z); 
         obstacle_cloud_.points[obs_count].x = scan->points[i].x;
         obstacle_cloud_.points[obs_count].y = scan->points[i].y;
-        obstacle_cloud_.points[obs_count].z = scan->points[i].z;
+        obstacle_cloud_.points[obs_count].z = height_temp;
         //obstacle_cloud_.channels[0].values[obs_count] = (float) scan->points[i].intensity;
         obs_count++;
       } else {
@@ -153,7 +161,7 @@ void HeightMap::constructGridClouds(const VPointCloud::ConstPtr &scan,
     int x = ((grid_dim_/2)+scan->points[i].x/m_per_cell_);
     int y = ((grid_dim_/2)+scan->points[i].y/m_per_cell_);
     if (x >= 0 && x < grid_dim_ && y >= 0 && y < grid_dim_ && init[x][y]) {
-      if ((max[x][y] - min[x][y] > height_diff_threshold_) ) {  
+      if ((max[x][y] - min[x][y] > height_diff_threshold_) && (clearance_height <= 0.0 || (clearance_height > 0.0 && min[x][y] < clearance_height) ) ) {  
         num_obs[x][y]++;
       } else {
         num_clear[x][y]++;

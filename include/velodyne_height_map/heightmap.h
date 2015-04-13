@@ -50,6 +50,7 @@ private:
   int grid_dim_;
   double m_per_cell_;
   double height_diff_threshold_;
+  double clearance_height; // clearance_height from location of velodyne, so that over bridge is not considered as obstacle
   bool full_clouds_;
 
   // Point clouds generated in processData
